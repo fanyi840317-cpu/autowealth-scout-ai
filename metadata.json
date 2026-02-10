@@ -1,0 +1,5 @@
+{
+  "name": "AutoWealth Scout AI",
+  "description": "An intelligent agent that scans the web using Gemini 3 and Google Search Grounding to identify high-potential automated business opportunities, niche markets, and revenue streams.",
+  "requestFramePermissions": []
+}
