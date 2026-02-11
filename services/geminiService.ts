@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, Schema, Chat, GenerateContentParameters } from "@google/genai";
-import { ScanResult, Opportunity, Difficulty, Language, AutomationResult, DiscoveryNode } from "../types";
+import { ScanResult, Opportunity, Difficulty, Language, AutomationResult, DiscoveryNode, VerificationResult } from "../types";
 
 // Models optimized for task type
 const DISCOVERY_MODEL = "gemini-3-flash-preview"; 
@@ -58,15 +58,61 @@ const opportunitySchema: Schema = {
           automationScore: { type: Type.NUMBER },
           difficulty: { type: Type.STRING, enum: ["Low", "Medium", "High"] },
           tags: { type: Type.ARRAY, items: { type: Type.STRING } },
-          actionPlan: { type: Type.ARRAY, items: { type: Type.STRING } },
-          trendingRegion: { type: Type.STRING }
+          firstAction: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              link: { type: Type.STRING }
+            },
+            required: ["title", "link"]
+          },
+          trendingRegion: { type: Type.STRING },
+          credibilityScore: { type: Type.NUMBER, description: "Score from 1-100 based on data backing" },
+          source: { type: Type.STRING, description: "Primary data source or reference" }
         },
-        required: ["title", "description", "estimatedMonthlyRevenue", "automationScore", "difficulty", "tags", "actionPlan"]
+        required: ["title", "description", "estimatedMonthlyRevenue", "automationScore", "difficulty", "tags", "firstAction", "credibilityScore"]
       }
     },
     marketOverview: { type: Type.STRING }
   },
   required: ["opportunities", "marketOverview"]
+};
+
+const verificationSchema: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    marketSize: { type: Type.STRING, description: "Market size analysis with trend data" },
+    competitors: {
+        type: Type.OBJECT,
+        properties: {
+            count: { type: Type.STRING },
+            topPlayers: { type: Type.ARRAY, items: { type: Type.STRING } },
+            barriers: { type: Type.STRING }
+        },
+        required: ["count", "topPlayers", "barriers"]
+    },
+    costs: {
+        type: Type.OBJECT,
+        properties: {
+            startup: { type: Type.STRING },
+            monthly: { type: Type.STRING },
+            skills: { type: Type.ARRAY, items: { type: Type.STRING } }
+        },
+        required: ["startup", "monthly", "skills"]
+    },
+    profitPath: {
+        type: Type.OBJECT,
+        properties: {
+            method: { type: Type.STRING },
+            unitPrice: { type: Type.STRING }
+        },
+        required: ["method", "unitPrice"]
+    },
+    risks: { type: Type.ARRAY, items: { type: Type.STRING } },
+    verdict: { type: Type.STRING, description: "Final verdict on feasibility" },
+    score: { type: Type.NUMBER, description: "0-100 score" }
+  },
+  required: ["marketSize", "competitors", "costs", "profitPath", "risks", "verdict", "score"]
 };
 
 const automationSchema: Schema = {
@@ -145,7 +191,7 @@ export const scanForOpportunities = async (niche: string, lang: Language, seed?:
     const context = formatContext(filters, excludeList);
     const langInstruction = lang === 'zh' ? "Use Simplified Chinese." : "Use English.";
     
-    const prompt = `Find 10 concrete business opportunities in: "${niche}". ${context} ${langInstruction}`;
+    const prompt = `Find 3 highly curated business opportunities in: "${niche}". ${context} ${langInstruction}. Include a specific first action step (title and link) and a credibility score based on data backing.`;
 
     const response = await ai.models.generateContent({
       model: ANALYSIS_MODEL,
@@ -168,6 +214,27 @@ export const scanForOpportunities = async (niche: string, lang: Language, seed?:
       marketOverview: parsed.marketOverview,
       sources
     };
+  });
+};
+
+export const verifyIdea = async (idea: string, lang: Language): Promise<VerificationResult> => {
+  return callWithRetry(async () => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const prompt = lang === 'zh'
+      ? `对商业想法"${idea}"进行深度验证。提供市场规模(Trend数据)、竞争分析(真实竞品)、成本估算、盈利路径和风险评估。`
+      : `Verify the business idea "${idea}". Provide market size (Trends data), competition (Real players), costs, profit path, and risks.`;
+
+    const response = await ai.models.generateContent({
+      model: ANALYSIS_MODEL,
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+        responseMimeType: "application/json",
+        responseSchema: verificationSchema,
+      },
+    });
+
+    return JSON.parse(response.text);
   });
 };
 

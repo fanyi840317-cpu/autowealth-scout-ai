@@ -21,8 +21,34 @@ export interface Opportunity {
   automationScore: number; // 0-100
   difficulty: Difficulty;
   tags: string[];
-  actionPlan: string[];
+  firstAction: {
+    title: string;
+    link: string;
+  };
   trendingRegion?: string;
+  credibilityScore: number;
+  source?: string;
+}
+
+export interface VerificationResult {
+  marketSize: string;
+  competitors: {
+    count: string;
+    topPlayers: string[];
+    barriers: string;
+  };
+  costs: {
+    startup: string;
+    monthly: string;
+    skills: string[];
+  };
+  profitPath: {
+    method: string;
+    unitPrice: string;
+  };
+  risks: string[];
+  verdict: string;
+  score: number;
 }
 
 export interface DiscoveryNode {

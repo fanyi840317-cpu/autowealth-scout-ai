@@ -70,6 +70,10 @@ const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, index, l
             <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-1">{t.revenue}</p>
             <p className="text-sm font-mono text-emerald-400 font-black">{opportunity.estimatedMonthlyRevenue}</p>
           </div>
+          <div className="text-center">
+             <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-1">TRUST</p>
+             <p className="text-sm font-mono text-purple-400 font-black">{opportunity.credibilityScore}%</p>
+          </div>
           <div className="text-right">
             <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-1">{t.automation}</p>
             <div className="flex items-center gap-2">
