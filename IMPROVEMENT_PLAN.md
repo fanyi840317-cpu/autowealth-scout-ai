@@ -31,6 +31,19 @@
 - 附带直达链接（如：注册 Shopify → 直链到 Shopify 注册页）
 - 提供可下载的文案模板/定价模板（而非不可运行的代码）
 
+#### 4. 动态细分与智能导航 (Dynamic Drill-Down) - [已实现 Implemented]
+- **现状**：固定的 3 层结构 (Sector -> Niche -> Opportunity) 过于死板，无法适应不同复杂度的想法。
+- **改进**：引入递归式探索 (Recursive Exploration)。
+  - 用户点击一个节点时，AI 动态判断该节点是“过于宽泛”还是“足够落地”。
+  - 如果宽泛，生成下一级细分（可无限层级）。
+  - 如果落地，直接生成详细执行方案。
+  - 支持“追问式”细化，直到找到可执行的切入点。
+- **技术实现**：
+  - 新增 `exploreDomain` 函数，替代固定的 `fetchSubNiches`。
+  - 引入 `ExplorationResult` 接口，包含 `decision: 'expand' | 'finalize'` 字段。
+  - 更新 `App.tsx` 使用 `flowSteps` 状态管理，支持动态渲染多级探索路径。
+
+
 ### 🔴 关键技术修复
 
 | 修复项 | 说明 |

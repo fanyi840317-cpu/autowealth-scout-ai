@@ -21,42 +21,39 @@ export interface Opportunity {
   automationScore: number; // 0-100
   difficulty: Difficulty;
   tags: string[];
-  firstAction: {
-    title: string;
-    link: string;
-  };
+  actionPlan: string[]; // Deprecated but kept for compatibility
+  firstStep: string;
+  competitors: string[];
+  validationEvidence: Array<{
+    type: 'search_trend' | 'competitor_count' | 'market_size' | 'other';
+    content: string;
+    sourceUrl?: string;
+  }>;
   trendingRegion?: string;
-  credibilityScore: number;
-  source?: string;
-}
-
-export interface VerificationResult {
-  marketSize: string;
-  competitors: {
-    count: string;
-    topPlayers: string[];
-    barriers: string;
+  
+  // Enhanced Actionable Fields
+  targetPlatforms?: string[]; // e.g. ["Upwork", "Etsy", "ProductHunt"]
+  monetizationStrategy?: string[]; // e.g. ["SaaS Subscription", "One-time Digital Product"]
+  technicalImplementation?: {
+    dataSources: string[]; // e.g. ["Twitter API", "Google Trends", "Specific Website URL"]
+    scriptFunction: string; // What the script actually does
+    stepByStepGuide: string[]; // Detailed technical steps
   };
-  costs: {
-    startup: string;
-    monthly: string;
-    skills: string[];
-  };
-  profitPath: {
-    method: string;
-    unitPrice: string;
-  };
-  risks: string[];
-  verdict: string;
-  score: number;
 }
 
 export interface DiscoveryNode {
   id: string;
   label: string;
   description: string;
-  type: 'sector' | 'niche';
+  type: 'sector' | 'niche'; // Kept for UI styling
   subCount?: number;
+  isLeaf?: boolean; // New: determines if this is an actionable endpoint
+}
+
+export interface ExplorationResult {
+  decision: 'expand' | 'finalize';
+  nodes?: DiscoveryNode[];
+  scanResult?: ScanResult;
 }
 
 export interface AutomationResult {
@@ -88,4 +85,22 @@ export interface LogEntry {
   timestamp: string;
   message: string;
   type: 'info' | 'success' | 'warning' | 'error';
+}
+
+export interface DiscoveryStep {
+  id: string;
+  type: 'selection' | 'result';
+  title: string;
+  items?: DiscoveryNode[]; // For type='selection'
+  result?: ScanResult;     // For type='result'
+  isLoading?: boolean;
+  selectedItemId?: string; // Track which item was selected in this step
+  error?: string; // Optional error message
+}
+
+export interface UserProfile {
+  timeAvailable: 'full_time' | 'part_time' | 'weekends';
+  skills: string[]; // e.g., 'coding', 'design', 'writing', 'marketing', 'none'
+  budget: 'zero' | 'low' | 'high'; // <$100, $100-$1000, >$1000
+  interests: string[];
 }

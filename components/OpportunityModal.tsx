@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Opportunity, Language, Difficulty, AutomationResult, AgentAsset } from '../types';
+import { Opportunity, Language, Difficulty, AutomationResult, AgentAsset, UserProfile } from '../types';
 import { generateAutomationCode, createOpportunityChat } from '../services/geminiService';
 import { GenerateContentResponse } from '@google/genai';
+import { processActionPlan, generateBusinessPlan } from '../utils/monetization';
 
 interface Message {
   role: 'user' | 'model';
@@ -14,6 +15,7 @@ interface OpportunityModalProps {
   onClose: () => void;
   language: Language;
   onAgentSaved: (agent: AgentAsset) => void;
+  userProfile?: UserProfile | null;
 }
 
 const OpportunityModal: React.FC<OpportunityModalProps> = ({ 
@@ -21,7 +23,8 @@ const OpportunityModal: React.FC<OpportunityModalProps> = ({
   isOpen, 
   onClose, 
   language,
-  onAgentSaved
+  onAgentSaved,
+  userProfile
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
@@ -41,7 +44,7 @@ const OpportunityModal: React.FC<OpportunityModalProps> = ({
       setMessages([]);
       // Initialize chat session
       if (opportunity) {
-        chatRef.current = createOpportunityChat(opportunity, language);
+        chatRef.current = createOpportunityChat(opportunity, language, userProfile || undefined);
       }
     } else {
       document.body.style.overflow = 'unset';
@@ -82,6 +85,19 @@ const OpportunityModal: React.FC<OpportunityModalProps> = ({
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const handleDownloadPlan = () => {
+    const content = generateBusinessPlan(opportunity, language);
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${opportunity.title.replace(/\s+/g, '_')}_Plan.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -134,6 +150,9 @@ const OpportunityModal: React.FC<OpportunityModalProps> = ({
     expertTitle: language === 'zh' ? '专家咨询：深度对话' : 'Expert Consultation: Deep Dive',
     chatPlaceholder: language === 'zh' ? '询问关于此机会的更多细节...' : 'Ask more details about this...',
     chatInitial: language === 'zh' ? '你好！我是你的商业顾问。有什么关于这个机会的问题我可以帮你解答吗？' : 'Hi! I am your business consultant. Do you have any questions about this opportunity I can help answer?',
+    evidence: language === 'zh' ? '市场验证证据' : 'Market Validation Evidence',
+    firstStep: language === 'zh' ? '立即行动：第一步' : 'Actionable First Step',
+    download: language === 'zh' ? '📥 下载商业计划书' : '📥 Download Business Plan',
   };
 
   const getDifficultyColor = (diff: Difficulty) => {
@@ -202,6 +221,24 @@ const OpportunityModal: React.FC<OpportunityModalProps> = ({
               </div>
             </div>
 
+            {/* Validation Evidence Section (New) */}
+            {opportunity.validationEvidence && opportunity.validationEvidence.length > 0 && (
+                <div className="bg-emerald-950/10 p-5 rounded-xl border border-emerald-500/20">
+                    <h3 className="text-xs font-bold text-emerald-500 uppercase mb-3 flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        {t.evidence}
+                    </h3>
+                    <ul className="space-y-2">
+                        {opportunity.validationEvidence.map((ev, idx) => (
+                            <li key={idx} className="flex gap-2 text-sm text-emerald-100/80">
+                                <span className="text-emerald-500">•</span>
+                                <span>{ev.content}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
             {/* Analysis & Plan */}
             <div className="space-y-6">
                 <div>
@@ -212,29 +249,112 @@ const OpportunityModal: React.FC<OpportunityModalProps> = ({
                     <p className="text-slate-300 leading-relaxed text-sm md:text-base">{opportunity.description}</p>
                 </div>
 
+                {/* First Step Highlight (New) */}
+                {opportunity.firstStep && (
+                     <div className="bg-sky-500/10 p-4 rounded-lg border-l-2 border-sky-500">
+                        <h4 className="text-xs font-bold text-sky-400 uppercase mb-1">{t.firstStep}</h4>
+                        <p className="text-sm text-white font-medium">{opportunity.firstStep}</p>
+                     </div>
+                )}
+
                 <div className="bg-slate-900/30 p-5 rounded-xl border border-slate-800/50">
                     <h3 className="text-xs font-bold text-sky-500 uppercase mb-4 flex items-center gap-2">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                        {language === 'zh' ? '今日第一步' : 'First Action Step'}
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                        {t.plan}
                     </h3>
-                    <div className="bg-slate-950/50 p-4 rounded-lg border border-sky-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <p className="text-sm font-bold text-white">{opportunity.firstAction.title}</p>
-                        <a href={opportunity.firstAction.link} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold rounded-lg transition-colors whitespace-nowrap flex items-center justify-center gap-2">
-                            {language === 'zh' ? '去执行' : 'Execute'} <span className="text-lg leading-none">&rarr;</span>
-                        </a>
-                    </div>
-                    <div className="mt-4 pt-4 border-t border-white/5 flex flex-wrap items-center gap-4 text-[10px] uppercase tracking-widest text-slate-500">
-                        <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                            <span className="text-purple-400 font-bold">Trust Score: {opportunity.credibilityScore}/100</span>
+
+                    {/* Technical Implementation Section */}
+                    {opportunity.technicalImplementation && (
+                        <div className="mb-6 p-4 bg-slate-900/50 rounded-xl border border-sky-500/20">
+                            <h4 className="text-xs font-bold text-sky-300 uppercase mb-3 flex items-center gap-2">
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+                                {language === 'zh' ? '技术实操指南 (CRITICAL)' : 'TECHNICAL IMPLEMENTATION'}
+                            </h4>
+                            
+                            {/* Data Sources */}
+                            <div className="mb-3">
+                                <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">{language === 'zh' ? '数据源 / 目标平台' : 'DATA SOURCES'}</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {opportunity.technicalImplementation.dataSources.map((source, i) => (
+                                        <span key={i} className="px-2 py-1 bg-sky-900/30 text-sky-200 text-xs rounded border border-sky-500/30 font-mono">
+                                            {source}
+                                        </span>
+                                    ))}
+                                    {opportunity.targetPlatforms?.map((platform, i) => (
+                                        <span key={`p-${i}`} className="px-2 py-1 bg-purple-900/30 text-purple-200 text-xs rounded border border-purple-500/30 font-mono">
+                                            {platform}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Script Function */}
+                            <div className="mb-3">
+                                <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">{language === 'zh' ? '脚本核心功能' : 'SCRIPT FUNCTION'}</p>
+                                <p className="text-xs text-slate-300 leading-relaxed font-mono bg-black/20 p-2 rounded">
+                                    {opportunity.technicalImplementation.scriptFunction}
+                                </p>
+                            </div>
+
+                            {/* Step-by-Step */}
+                            <div>
+                                <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">{language === 'zh' ? '详细步骤' : 'STEPS'}</p>
+                                <ul className="space-y-1">
+                                    {opportunity.technicalImplementation.stepByStepGuide.map((step, i) => (
+                                        <li key={i} className="text-xs text-slate-400 flex gap-2">
+                                            <span className="text-sky-500 font-mono">{i + 1}.</span>
+                                            {step}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
                         </div>
-                        {opportunity.source && (
-                           <div className="flex items-center gap-2 max-w-full truncate">
-                               <span className="w-2 h-2 rounded-full bg-slate-500"></span>
-                               <span className="truncate">Source: {opportunity.source}</span>
-                           </div>
-                        )}
-                    </div>
+                    )}
+
+                    {/* Monetization Strategy */}
+                    {opportunity.monetizationStrategy && (
+                        <div className="mb-6 p-3 bg-emerald-900/10 rounded-lg border border-emerald-500/10">
+                            <h4 className="text-xs font-bold text-emerald-400 uppercase mb-2 flex items-center gap-2">
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                {language === 'zh' ? '变现路径' : 'MONETIZATION'}
+                            </h4>
+                            <div className="flex flex-wrap gap-2">
+                                {opportunity.monetizationStrategy.map((strat, i) => (
+                                    <span key={i} className="px-2 py-1 bg-emerald-500/10 text-emerald-300 text-xs rounded border border-emerald-500/20">
+                                        {strat}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <ul className="space-y-4">
+                        {processActionPlan(opportunity.actionPlan).map((step, idx) => (
+                            <li key={idx} className="flex gap-3 text-sm group">
+                                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-800 border border-sky-500/30 flex items-center justify-center text-[10px] font-mono text-sky-400 mt-0.5">{idx + 1}</div>
+                                <div className="flex flex-col gap-2">
+                                    <p className="text-slate-300 pt-0.5 leading-relaxed">{step.text}</p>
+                                    {step.links.length > 0 && (
+                                        <div className="flex flex-wrap gap-2">
+                                            {step.links.map((link, lIdx) => (
+                                                <a 
+                                                    key={lIdx} 
+                                                    href={link.url} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-1.5 px-2 py-1 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 rounded text-[10px] font-bold text-sky-400 hover:text-sky-300 transition-colors"
+                                                >
+                                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                                                    {link.label}
+                                                    <span className="opacity-50 font-normal">| {link.description}</span>
+                                                </a>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
                 </div>
 
                 <div>
@@ -332,7 +452,13 @@ const OpportunityModal: React.FC<OpportunityModalProps> = ({
         </div>
         
         {/* Footer Actions */}
-        <div className="p-3 md:p-4 border-t border-slate-800 bg-slate-900/80 flex justify-end shrink-0">
+        <div className="p-3 md:p-4 border-t border-slate-800 bg-slate-900/80 flex justify-between shrink-0">
+            <button 
+                onClick={handleDownloadPlan}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors text-xs font-bold shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+            >
+                {t.download}
+            </button>
             <button onClick={onClose} className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors text-xs font-bold border border-slate-700">{t.close}</button>
         </div>
       </div>

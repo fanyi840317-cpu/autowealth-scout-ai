@@ -1,135 +1,211 @@
-import { GoogleGenAI, Type, Schema, Chat, GenerateContentParameters } from "@google/genai";
-import { ScanResult, Opportunity, Difficulty, Language, AutomationResult, DiscoveryNode, VerificationResult } from "../types";
-
-// Models optimized for task type
-const DISCOVERY_MODEL = "gemini-3-flash-preview"; 
-const ANALYSIS_MODEL = "gemini-3-pro-preview";   
+import { DiscoveryNode, ScanResult, Opportunity, UserProfile, AutomationResult, Language, ExplorationResult } from "../types";
 
 /**
- * Utility to handle retries for transient API errors
+ * Utility to call the backend API (Serverless Function)
  */
-async function callWithRetry<T>(
-  apiCall: () => Promise<T>,
-  maxRetries: number = 3,
-  initialDelay: number = 1000
-): Promise<T> {
-  let lastError: any;
-  for (let i = 0; i < maxRetries; i++) {
+async function callBackendApi(endpoint: string, body: any): Promise<any> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+  const parseResponseJson = async (response: Response) => {
+    const text = await response.text();
+    if (!text) return {};
     try {
-      return await apiCall();
-    } catch (error: any) {
-      lastError = error;
-      const status = error?.status || (error?.message?.includes('429') ? 429 : 500);
-      if (status === 429 || status === 503) {
-        const delay = initialDelay * Math.pow(2, i);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        continue;
-      }
-      throw error;
+      return JSON.parse(text);
+    } catch {
+      throw new Error(`API返回非JSON (non-JSON) 响应: ${text.slice(0, 200)}`);
     }
+  };
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+
+    const data = await parseResponseJson(response);
+
+    if (!response.ok) {
+      throw new Error(data?.error || `API请求失败 (request failed)，状态码: ${response.status}`);
+    }
+
+    return data;
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      throw new Error('请求超时 (timeout)，请稍后重试。');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  throw lastError;
 }
 
-const discoverySchema: Schema = {
-  type: Type.ARRAY,
-  items: {
-    type: Type.OBJECT,
-    properties: {
-      id: { type: Type.STRING },
-      label: { type: Type.STRING },
-      description: { type: Type.STRING }
-    },
-    required: ["id", "label", "description"]
-  }
+const discoverySchema = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          label: { type: "string" },
+          description: { type: "string" },
+          isLeaf: { type: "boolean" }
+        },
+        required: ["id", "label", "description", "isLeaf"]
+      }
+    }
+  },
+  required: ["items"]
 };
 
-const opportunitySchema: Schema = {
-  type: Type.OBJECT,
+const opportunitySchema = {
+  type: "object",
   properties: {
     opportunities: {
-      type: Type.ARRAY,
+      type: "array",
       items: {
-        type: Type.OBJECT,
+        type: "object",
         properties: {
-          title: { type: Type.STRING },
-          description: { type: Type.STRING },
-          estimatedMonthlyRevenue: { type: Type.STRING },
-          automationScore: { type: Type.NUMBER },
-          difficulty: { type: Type.STRING, enum: ["Low", "Medium", "High"] },
-          tags: { type: Type.ARRAY, items: { type: Type.STRING } },
-          firstAction: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              link: { type: Type.STRING }
-            },
-            required: ["title", "link"]
+          title: { type: "string" },
+          description: { type: "string" },
+          estimatedMonthlyRevenue: { type: "string" },
+          automationScore: { type: "number" },
+          difficulty: { type: "string", enum: ["Low", "Medium", "High"] },
+          tags: { type: "array", items: { type: "string" } },
+          actionPlan: { type: "array", items: { type: "string" } },
+          firstStep: { type: "string" },
+          competitors: { type: "array", items: { type: "string" } },
+          validationEvidence: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                type: { type: "string", enum: ['search_trend', 'competitor_count', 'market_size', 'other'] },
+                content: { type: "string" },
+                sourceUrl: { type: "string" }
+              },
+              required: ["type", "content"]
+            }
           },
-          trendingRegion: { type: Type.STRING },
-          credibilityScore: { type: Type.NUMBER, description: "Score from 1-100 based on data backing" },
-          source: { type: Type.STRING, description: "Primary data source or reference" }
+          trendingRegion: { type: "string" },
+          targetPlatforms: { type: "array", items: { type: "string" } },
+          monetizationStrategy: { type: "array", items: { type: "string" } },
+          technicalImplementation: {
+            type: "object",
+            properties: {
+              dataSources: { type: "array", items: { type: "string" } },
+              scriptFunction: { type: "string" },
+              stepByStepGuide: { type: "array", items: { type: "string" } }
+            },
+            required: ["dataSources", "scriptFunction", "stepByStepGuide"]
+          }
         },
-        required: ["title", "description", "estimatedMonthlyRevenue", "automationScore", "difficulty", "tags", "firstAction", "credibilityScore"]
+        required: ["title", "description", "estimatedMonthlyRevenue", "automationScore", "difficulty", "tags", "actionPlan", "firstStep", "competitors", "validationEvidence", "targetPlatforms", "monetizationStrategy", "technicalImplementation"]
       }
     },
-    marketOverview: { type: Type.STRING }
+    marketOverview: { type: "string" }
   },
   required: ["opportunities", "marketOverview"]
 };
 
-const verificationSchema: Schema = {
-  type: Type.OBJECT,
+const explorationSchema = {
+  type: "object",
   properties: {
-    marketSize: { type: Type.STRING, description: "Market size analysis with trend data" },
-    competitors: {
-        type: Type.OBJECT,
+    decision: { type: "string", enum: ["expand", "finalize"] },
+    // Only present if decision is "expand"
+    children: {
+      type: "array",
+      items: {
+        type: "object",
         properties: {
-            count: { type: Type.STRING },
-            topPlayers: { type: Type.ARRAY, items: { type: Type.STRING } },
-            barriers: { type: Type.STRING }
+          id: { type: "string" },
+          label: { type: "string" },
+          description: { type: "string" },
+          isLeaf: { type: "boolean" }
         },
-        required: ["count", "topPlayers", "barriers"]
+        required: ["id", "label", "description", "isLeaf"]
+      }
     },
-    costs: {
-        type: Type.OBJECT,
-        properties: {
-            startup: { type: Type.STRING },
-            monthly: { type: Type.STRING },
-            skills: { type: Type.ARRAY, items: { type: Type.STRING } }
+    // Only present if decision is "finalize"
+    scanResult: {
+      type: "object",
+      properties: {
+        opportunities: {
+          type: "array",
+          items: {
+             type: "object",
+             properties: {
+                title: { type: "string" },
+                description: { type: "string" },
+                estimatedMonthlyRevenue: { type: "string" },
+                automationScore: { type: "number" },
+                difficulty: { type: "string", enum: ["Low", "Medium", "High"] },
+                tags: { type: "array", items: { type: "string" } },
+                actionPlan: { type: "array", items: { type: "string" } },
+                firstStep: { type: "string" },
+                competitors: { type: "array", items: { type: "string" } },
+                validationEvidence: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      type: { type: "string", enum: ['search_trend', 'competitor_count', 'market_size', 'other'] },
+                      content: { type: "string" },
+                      sourceUrl: { type: "string" }
+                    },
+                    required: ["type", "content"]
+                  }
+                },
+                trendingRegion: { type: "string" },
+                targetPlatforms: { type: "array", items: { type: "string" } },
+                monetizationStrategy: { type: "array", items: { type: "string" } },
+                technicalImplementation: {
+                  type: "object",
+                  properties: {
+                    dataSources: { type: "array", items: { type: "string" } },
+                    scriptFunction: { type: "string" },
+                    stepByStepGuide: { type: "array", items: { type: "string" } }
+                  },
+                  required: ["dataSources", "scriptFunction", "stepByStepGuide"]
+                }
+             },
+             required: ["title", "description", "estimatedMonthlyRevenue", "automationScore", "difficulty", "tags", "actionPlan", "firstStep", "competitors", "validationEvidence", "targetPlatforms", "monetizationStrategy", "technicalImplementation"]
+          }
         },
-        required: ["startup", "monthly", "skills"]
-    },
-    profitPath: {
-        type: Type.OBJECT,
-        properties: {
-            method: { type: Type.STRING },
-            unitPrice: { type: Type.STRING }
-        },
-        required: ["method", "unitPrice"]
-    },
-    risks: { type: Type.ARRAY, items: { type: Type.STRING } },
-    verdict: { type: Type.STRING, description: "Final verdict on feasibility" },
-    score: { type: Type.NUMBER, description: "0-100 score" }
+        marketOverview: { type: "string" }
+      },
+      // scanResult is optional in the schema overall, but if present, these are required
+    }
   },
-  required: ["marketSize", "competitors", "costs", "profitPath", "risks", "verdict", "score"]
+  required: ["decision"]
 };
 
-const automationSchema: Schema = {
-  type: Type.OBJECT,
+const automationSchema = {
+  type: "object",
   properties: {
-    code: { type: Type.STRING },
-    language: { type: Type.STRING },
-    instructions: { type: Type.STRING },
-    dependencies: { type: Type.ARRAY, items: { type: Type.STRING } }
+    code: { type: "string" },
+    language: { type: "string" },
+    instructions: { type: "string" },
+    dependencies: { type: "array", items: { type: "string" } }
   },
   required: ["code", "language", "instructions", "dependencies"]
 };
 
-const formatContext = (filters?: string[], excludeList?: string[]) => {
+const formatContext = (profile?: UserProfile, excludeList?: string[]) => {
   let context = "";
-  if (filters && filters.length > 0) {
-    context += `CONSTRAINTS: Targeted for ${filters.join(", ")}. `;
+  if (profile) {
+    context += `USER CONTEXT:
+    - Availability: ${profile.timeAvailable}
+    - Skills: ${profile.skills.join(", ")}
+    - Budget: ${profile.budget}
+    - Interests: ${profile.interests.join(", ")}
+    
+    IMPORTANT: Tailor all results specifically to this user profile.
+    `;
   }
   if (excludeList && excludeList.length > 0) {
     context += `IMPORTANT: Do NOT include any of the following already discovered items: ${excludeList.join(", ")}. Find NEW unique ones. `;
@@ -137,124 +213,224 @@ const formatContext = (filters?: string[], excludeList?: string[]) => {
   return context;
 };
 
-export const fetchTopSectors = async (lang: Language, seed?: number, filters?: string[], excludeList?: string[]): Promise<DiscoveryNode[]> => {
-  return callWithRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const context = formatContext(filters, excludeList);
-    
-    const prompt = lang === 'zh' 
-      ? `找出 10 个顶级自动化赚钱商业领域。${context} 使用简体中文。`
-      : `Identify 10 unique business sectors for automated income. ${context} Output in Simplified Chinese.`;
+export const exploreDomain = async (
+  currentLabel: string, 
+  pathLabels: string[],
+  lang: Language, 
+  profile?: UserProfile, 
+  excludeList?: string[]
+): Promise<ExplorationResult> => {
+  const context = formatContext(profile, excludeList);
+  const pathContext = pathLabels.length > 0 ? `Path: ${pathLabels.join(" > ")}` : "Path: Root";
+  const langInstruction = lang === 'zh' ? "Use Simplified Chinese." : "Use English.";
 
-    const response = await ai.models.generateContent({
-      model: DISCOVERY_MODEL,
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json",
-        responseSchema: discoverySchema,
-        seed: seed ?? Math.floor(Math.random() * 1000),
-      },
-    });
+  const prompt = `
+  You are an expert business consultant helping a user find a profitable, automated income opportunity.
+  
+  CURRENT CONTEXT: "${currentLabel}"
+  ${pathContext}
+  ${context}
+  ${langInstruction}
 
-    return (JSON.parse(response.text)).map((node: any) => ({ ...node, type: 'sector', id: `node-${Date.now()}-${Math.random()}` }));
+  YOUR TASK:
+  Analyze the specificity of the "CURRENT CONTEXT" relative to the "Path".
+  
+  CRITICAL RULES:
+  1. NO LOOPS: Do NOT suggest any topic that is already in the "Path" or semantically identical to previous steps.
+  2. PROGRESSION: Each step must be SIGNIFICANTLY more specific than the previous one.
+  3. AVOID TRIVIAL STEPS: Do not create unnecessary intermediate steps (e.g., "Food Blog" -> "Western Food Blog" -> "French Food Blog" is okay, but "French Food Blog" -> "French Breakfast Blog" -> "French Breakfast Blog" is INVALID).
+  4. FORCE FINALIZE: If "CURRENT CONTEXT" is already a specific, actionable business idea (e.g., "Selling French Breakfast Recipe E-books"), you MUST set decision="finalize". Do not try to break it down further if it creates redundancy.
+
+  DECISION LOGIC:
+  1. If the context is BROAD (e.g., "SaaS", "Content Creation", "E-commerce") AND you can provide distinctly different sub-categories:
+     - Set decision="expand".
+     - Provide 5-8 distinct, high-potential sub-niches.
+     - Mark 'isLeaf': true ONLY if a sub-niche is immediately actionable.
+  
+  2. If the context is SPECIFIC (e.g., "Scraping medical tender data", "French Breakfast Recipe Blog"):
+     - Set decision="finalize".
+     - Generate 3 detailed execution variations/plans for this specific idea.
+     - Include ALL technical details, validation evidence, and first steps.
+
+  OUTPUT JSON matching the schema.
+  `;
+
+  const result = await callBackendApi('/api/gemini', {
+    prompt,
+    schema: explorationSchema,
+    tools: [{ googleSearch: {} }]
   });
-};
 
-export const fetchSubNiches = async (sector: string, lang: Language, seed?: number, filters?: string[], excludeList?: string[]): Promise<DiscoveryNode[]> => {
-  return callWithRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const context = formatContext(filters, excludeList);
-
-    const prompt = lang === 'zh'
-      ? `在"${sector}"领域内，找出 10 个蓝海细分领域。${context} 使用简体中文。`
-      : `Within "${sector}", identify 10 low-competition sub-niches. ${context}`;
-
-    const response = await ai.models.generateContent({
-      model: DISCOVERY_MODEL,
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json",
-        responseSchema: discoverySchema,
-        seed: seed ?? Math.floor(Math.random() * 1000),
-      },
-    });
-
-    return (JSON.parse(response.text)).map((node: any) => ({ ...node, type: 'niche', id: `node-${Date.now()}-${Math.random()}` }));
-  });
-};
-
-export const scanForOpportunities = async (niche: string, lang: Language, seed?: number, filters?: string[], excludeList?: string[]): Promise<ScanResult> => {
-  return callWithRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const context = formatContext(filters, excludeList);
-    const langInstruction = lang === 'zh' ? "Use Simplified Chinese." : "Use English.";
-    
-    const prompt = `Find 3 highly curated business opportunities in: "${niche}". ${context} ${langInstruction}. Include a specific first action step (title and link) and a credibility score based on data backing.`;
-
-    const response = await ai.models.generateContent({
-      model: ANALYSIS_MODEL,
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json",
-        responseSchema: opportunitySchema,
-        seed: seed ?? Math.floor(Math.random() * 1000),
-      },
-    });
-
-    const parsed = JSON.parse(response.text);
-    const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks
-      ?.map((chunk: any) => chunk.web).filter((w: any) => w)
-      .map((w: any) => ({ title: w.title, uri: w.uri })) || [];
-
+  if (result.decision === 'finalize') {
     return {
-      opportunities: parsed.opportunities.map((o: any, i: number) => ({ ...o, id: `opp-${Date.now()}-${i}-${Math.random()}` })),
-      marketOverview: parsed.marketOverview,
-      sources
+      decision: 'finalize',
+      scanResult: {
+        opportunities: result.scanResult?.opportunities?.map((o: any, i: number) => ({ ...o, id: `opp-${Date.now()}-${i}-${Math.random()}` })) || [],
+        marketOverview: result.scanResult?.marketOverview || "Analysis Complete",
+        sources: []
+      }
     };
-  });
+  } else {
+    return {
+      decision: 'expand',
+      nodes: result.children?.map((node: any) => ({ 
+        ...node, 
+        type: 'niche', 
+        id: `node-${Date.now()}-${Math.random()}`,
+        isLeaf: node.isLeaf 
+      })) || []
+    };
+  }
 };
 
-export const verifyIdea = async (idea: string, lang: Language): Promise<VerificationResult> => {
-  return callWithRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = lang === 'zh'
-      ? `对商业想法"${idea}"进行深度验证。提供市场规模(Trend数据)、竞争分析(真实竞品)、成本估算、盈利路径和风险评估。`
-      : `Verify the business idea "${idea}". Provide market size (Trends data), competition (Real players), costs, profit path, and risks.`;
+export const fetchTopSectors = async (lang: Language, seed?: number, profile?: UserProfile, excludeList?: string[]): Promise<DiscoveryNode[]> => {
+  // We can reuse exploreDomain for the root, or keep this simple for the initial load.
+  // For consistency, let's keep this simple but add isLeaf.
+  const context = formatContext(profile, excludeList);
+  
+  const prompt = lang === 'zh' 
+    ? `根据用户画像找出 10 个最适合的顶级自动化赚钱商业领域。${context} 使用简体中文。`
+    : `Identify 10 unique business sectors for automated income tailored to the user profile. ${context} Output in Simplified Chinese.`;
 
-    const response = await ai.models.generateContent({
-      model: ANALYSIS_MODEL,
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json",
-        responseSchema: verificationSchema,
-      },
-    });
-
-    return JSON.parse(response.text);
+  const result = await callBackendApi('/api/gemini', {
+    prompt,
+    schema: discoverySchema,
+    tools: [{ googleSearch: {} }]
   });
+
+  const list = result.items || (Array.isArray(result) ? result : []);
+  return list.map((node: any) => ({ ...node, type: 'sector', id: `node-${Date.now()}-${Math.random()}`, isLeaf: false }));
+};
+
+// Deprecated but kept for compatibility if needed, though exploreDomain replaces it
+export const fetchSubNiches = async (sector: string, lang: Language, seed?: number, profile?: UserProfile, excludeList?: string[]): Promise<DiscoveryNode[]> => {
+  const result = await exploreDomain(sector, [], lang, profile, excludeList);
+  if (result.decision === 'expand') return result.nodes || [];
+  return []; // Fallback
+};
+
+export const scanForOpportunities = async (niche: string, lang: Language, seed?: number, profile?: UserProfile, excludeList?: string[]): Promise<ScanResult> => {
+   // Force finalize
+   const context = formatContext(profile, excludeList);
+   const langInstruction = lang === 'zh' ? "Use Simplified Chinese." : "Use English.";
+   
+   const prompt = `Find 3 highly validated business opportunities in: "${niche}". 
+   Focus on VERIFICATION and REALITY CHECK. 
+   Ensure opportunities fit the USER CONTEXT (Skills: ${profile?.skills}, Budget: ${profile?.budget}).
+   
+   For each opportunity, provide EXTREMELY DETAILED and ACTIONABLE technical specifics:
+   1. A specific "First Step" to start today.
+   2. Real-world competitors (names/links).
+   3. Validation evidence (search trends, market gaps).
+   4. Target Platforms.
+   5. Monetization Strategy.
+   6. Technical Implementation (CRITICAL).
+   
+   ${context} ${langInstruction}`;
+ 
+   const parsed = await callBackendApi('/api/gemini', {
+     prompt,
+     schema: opportunitySchema,
+     tools: [{ googleSearch: {} }]
+   });
+ 
+   return {
+     opportunities: parsed.opportunities.map((o: any, i: number) => ({ ...o, id: `opp-${Date.now()}-${i}-${Math.random()}` })),
+     marketOverview: parsed.marketOverview,
+     sources: []
+   };
 };
 
 export const generateAutomationCode = async (opportunity: Opportunity, lang: Language): Promise<AutomationResult> => {
-  return callWithRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = `Write a complete automation script for: ${opportunity.title}. ${lang === 'zh' ? "Chinese instructions." : ""}`;
-    const response = await ai.models.generateContent({
-      model: ANALYSIS_MODEL,
-      contents: prompt,
-      config: { responseMimeType: "application/json", responseSchema: automationSchema },
-    });
-    return JSON.parse(response.text);
+  const prompt = `Write a complete automation script for: ${opportunity.title}. ${lang === 'zh' ? "Chinese instructions." : ""}`;
+  
+  const result = await callBackendApi('/api/gemini', {
+    prompt,
+    schema: automationSchema
   });
+
+  return result;
 };
 
-export const createOpportunityChat = (opportunity: Opportunity, lang: Language): Chat => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Chat needs streaming, which is complex to implement via simple serverless JSON endpoint.
+// For MVP, we can make it a simple request-response or disable chat temporarily if "Free Tier" doesn't support easy streaming via Vercel functions without edge streaming.
+// However, we can use the same endpoint for single turn chat.
+export const createOpportunityChat = (opportunity: Opportunity, lang: Language, profile?: UserProfile) => {
+  const context = formatContext(profile);
+  
   const systemInstruction = lang === 'zh' 
-    ? `你是一位商业顾问，正在讨论"${opportunity.title}"这个机会。请使用简体中文回复。`
-    : `You are a consultant for "${opportunity.title}".`;
-  return ai.chats.create({ model: ANALYSIS_MODEL, config: { systemInstruction } });
+    ? `你是一位精通"${opportunity.title}"领域的商业顾问专家。
+       
+       **你的任务**：
+       为用户提供关于这个商业机会的深度咨询。利用以下信息作为背景，但不要一次性全部罗列，而是根据用户的问题进行针对性回答。
+       
+       **机会详情**：
+       - 标题：${opportunity.title}
+       - 描述：${opportunity.description}
+       - 预估月收入：${opportunity.estimatedMonthlyRevenue}
+       - 难度：${opportunity.difficulty}
+       - 自动化评分：${opportunity.automationScore}
+       - 市场趋势区域：${opportunity.trendingRegion}
+       - 第一步行动：${opportunity.firstStep}
+       - 竞争对手：${opportunity.competitors.join(', ')}
+       
+       **用户背景**：
+       ${context}
+       
+       **回答风格**：
+       - 专业、客观、富有洞察力。
+       - 鼓励用户行动，给出具体可执行的建议。
+       - 必须使用简体中文回复。
+       `
+    : `You are an expert business consultant specializing in "${opportunity.title}". 
+       
+       **Task**: Provide deep consultation.
+       
+       **Opportunity Details**:
+       - Title: ${opportunity.title}
+       - Description: ${opportunity.description}
+       - Revenue: ${opportunity.estimatedMonthlyRevenue}
+       - Difficulty: ${opportunity.difficulty}
+       - First Step: ${opportunity.firstStep}
+       
+       **User Context**:
+       ${context}
+       
+       **Style**: Professional, actionable, insightful.`;
+
+  // Maintain conversation history in closure
+  const history: { role: 'user' | 'model' | 'system', content: string }[] = [
+    { role: 'system', content: systemInstruction }
+  ];
+
+  return {
+    sendMessageStream: async ({ message }: { message: string }) => {
+       // Add user message to history
+       history.push({ role: 'user', content: message });
+
+       // Prepare messages for API (map 'model' to 'assistant')
+       const apiMessages = history.map(h => ({
+         role: h.role === 'model' ? 'assistant' : h.role,
+         content: h.content
+       }));
+
+       const result = await callBackendApi('/api/gemini', {
+         messages: apiMessages
+       });
+       
+       // Handle response
+       const content = typeof result === 'object' && result.content ? result.content : result;
+       const text = typeof content === 'string' ? content : JSON.stringify(content);
+
+       // Add model response to history
+       history.push({ role: 'model', content: text });
+
+       // Return an async iterable to mimic stream
+       return {
+         [Symbol.asyncIterator]: async function* () {
+           yield { text };
+         }
+       };
+    }
+  };
 };

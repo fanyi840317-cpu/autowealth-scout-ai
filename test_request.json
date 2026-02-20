@@ -1,0 +1,22 @@
+{
+  "prompt": "根据用户画像找出 10 个最适合的顶级自动化赚钱商业领域。 使用简体中文。",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "label": { "type": "string" },
+            "description": { "type": "string" },
+            "isLeaf": { "type": "boolean" }
+          },
+          "required": ["id", "label", "description", "isLeaf"]
+        }
+      }
+    },
+    "required": ["items"]
+  }
+}
