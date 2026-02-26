@@ -102,9 +102,19 @@ const opportunitySchema = {
               stepByStepGuide: { type: "array", items: { type: "string" } }
             },
             required: ["dataSources", "scriptFunction", "stepByStepGuide"]
+          },
+          prerequisites: {
+            type: "object",
+            properties: {
+              budget: { type: "string" },
+              timeCommitment: { type: "string" },
+              technicalRequirements: { type: "array", items: { type: "string" } },
+              accountsNeeded: { type: "array", items: { type: "string" } }
+            },
+            required: ["budget", "timeCommitment", "technicalRequirements", "accountsNeeded"]
           }
         },
-        required: ["title", "description", "estimatedMonthlyRevenue", "automationScore", "difficulty", "tags", "actionPlan", "firstStep", "competitors", "validationEvidence", "targetPlatforms", "monetizationStrategy", "technicalImplementation"]
+        required: ["title", "description", "estimatedMonthlyRevenue", "automationScore", "difficulty", "tags", "actionPlan", "firstStep", "competitors", "validationEvidence", "targetPlatforms", "monetizationStrategy", "technicalImplementation", "prerequisites"]
       }
     },
     marketOverview: { type: "string" }
@@ -171,9 +181,19 @@ const explorationSchema = {
                     stepByStepGuide: { type: "array", items: { type: "string" } }
                   },
                   required: ["dataSources", "scriptFunction", "stepByStepGuide"]
+                },
+                prerequisites: {
+                    type: "object",
+                    properties: {
+                        budget: { type: "string" },
+                        timeCommitment: { type: "string" },
+                        technicalRequirements: { type: "array", items: { type: "string" } },
+                        accountsNeeded: { type: "array", items: { type: "string" } }
+                    },
+                    required: ["budget", "timeCommitment", "technicalRequirements", "accountsNeeded"]
                 }
              },
-             required: ["title", "description", "estimatedMonthlyRevenue", "automationScore", "difficulty", "tags", "actionPlan", "firstStep", "competitors", "validationEvidence", "targetPlatforms", "monetizationStrategy", "technicalImplementation"]
+             required: ["title", "description", "estimatedMonthlyRevenue", "automationScore", "difficulty", "tags", "actionPlan", "firstStep", "competitors", "validationEvidence", "targetPlatforms", "monetizationStrategy", "technicalImplementation", "prerequisites"]
           }
         },
         marketOverview: { type: "string" }
@@ -190,9 +210,16 @@ const automationSchema = {
     code: { type: "string" },
     language: { type: "string" },
     instructions: { type: "string" },
-    dependencies: { type: "array", items: { type: "string" } }
+    dependencies: { type: "array", items: { type: "string" } },
+    setupGuide: { type: "string" },
+    humanTasks: { type: "array", items: { type: "string" } },
+    automationScope: { type: "string" },
+    targetUser: { type: "string" },
+    valueProposition: { type: "string" },
+    monetizationStrategy: { type: "string" },
+    deliverable: { type: "string" }
   },
-  required: ["code", "language", "instructions", "dependencies"]
+  required: ["code", "language", "instructions", "dependencies", "setupGuide", "humanTasks", "automationScope", "targetUser", "valueProposition", "monetizationStrategy", "deliverable"]
 };
 
 const formatContext = (profile?: UserProfile, excludeList?: string[]) => {
@@ -318,6 +345,13 @@ export const scanForOpportunities = async (niche: string, lang: Language, seed?:
    Focus on VERIFICATION and REALITY CHECK. 
    Ensure opportunities fit the USER CONTEXT (Skills: ${profile?.skills}, Budget: ${profile?.budget}).
    
+   CRITICAL: BE OPINIONATED AND PRESCRIPTIVE.
+   - DO NOT say "Choose a platform" or "Select a niche".
+   - INSTEAD, SAY "Register on Shopify" or "Use Amazon KDP".
+   - The user wants a specific plan, not a menu of options.
+   - For 'First Step', give a direct command: "Go to [URL] and sign up for X".
+   - For 'Action Plan', give specific, non-generic instructions.
+
    For each opportunity, provide EXTREMELY DETAILED and ACTIONABLE technical specifics:
    1. A specific "First Step" to start today.
    2. Real-world competitors (names/links).
@@ -325,6 +359,11 @@ export const scanForOpportunities = async (niche: string, lang: Language, seed?:
    4. Target Platforms.
    5. Monetization Strategy.
    6. Technical Implementation (CRITICAL).
+   7. Prerequisites (Mandatory):
+      - Budget (e.g., "$50/mo for VPS")
+      - Time Commitment (e.g., "2h setup, 0h daily")
+      - Technical Requirements (e.g., "Python, OpenAI API Key")
+      - Accounts Needed (e.g., "Twitter Dev Account, Stripe")
    
    ${context} ${langInstruction}`;
  
@@ -342,7 +381,42 @@ export const scanForOpportunities = async (niche: string, lang: Language, seed?:
 };
 
 export const generateAutomationCode = async (opportunity: Opportunity, lang: Language): Promise<AutomationResult> => {
-  const prompt = `Write a complete automation script for: ${opportunity.title}. ${lang === 'zh' ? "Chinese instructions." : ""}`;
+  const prompt = `
+  You are an expert Automation Engineer & Business Architect.
+  The user wants to build a "PASSIVE INCOME ENGINE" based on: "${opportunity.title}".
+  
+  CORE PHILOSOPHY: **"CODE DOES THE WORK, HUMAN DOES THE AUTH"**
+  - The user is ONLY willing to provide: Identity, Authentication (Cookies/API Keys), Payment Gateways, and initial server setup.
+  - The CODE must handle: Discovery, Content Creation, Data Processing, Posting, Messaging, and Delivery.
+  - REJECT any plan that requires daily manual labor (e.g., "Manually join groups", "Write blog posts yourself").
+
+  YOUR TASK:
+  1. Design a **Business Blueprint** where the core value delivery is AUTOMATED.
+  2. Write a **Robust Script** that executes the core business logic.
+  3. Define the **Human-Machine Contract**: Clearly separate "Setup (One-time)" from "Runtime (Automated)".
+
+  OUTPUT JSON FORMAT:
+  {
+    "targetUser": "Who pays? (e.g. 'Busy Realtors', 'Crypto Traders')",
+    "valueProposition": "Why pay? (e.g. 'Get 50 leads/day on autopilot')",
+    "monetizationStrategy": "How to charge? (e.g. 'SaaS Subscription', 'Sell Data API')",
+    "deliverable": "What is the product? (e.g. 'JSON Feed', 'Auto-generated Video')",
+    "automationScope": "What the script does (e.g. 'Scrapes X, Filters Y, Emails Z')",
+    "code": "FULL PYTHON/NODEJS SCRIPT. Must be production-ready with error handling. IF scraping, include headers/delays.",
+    "language": "python" or "javascript",
+    "humanTasks": [
+        "One-time: Create Account on X",
+        "One-time: Get API Key from Y",
+        "One-time: Set up VPS/Cron Job",
+        "Maintenance: Refresh Auth Cookies monthly"
+    ],
+    "setupGuide": "Exact commands to install dependencies (e.g. 'pip install selenium pandas').",
+    "dependencies": ["List of libraries"],
+    "instructions": "Step-by-step run guide."
+  }
+  
+  ${lang === 'zh' ? "Use Simplified Chinese for all descriptions/guides. Keep code comments in English." : ""}
+  `;
   
   const result = await callBackendApi('/api/gemini', {
     prompt,
@@ -411,7 +485,7 @@ export const createOpportunityChat = (opportunity: Opportunity, lang: Language, 
        // Prepare messages for API (map 'model' to 'assistant')
        const apiMessages = history.map(h => ({
          role: h.role === 'model' ? 'assistant' : h.role,
-         content: h.content
+         content: h.content || " " // Ensure content is never empty/undefined
        }));
 
        const result = await callBackendApi('/api/gemini', {

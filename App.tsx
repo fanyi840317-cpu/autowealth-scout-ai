@@ -19,7 +19,8 @@ const TRANSLATIONS = {
     navDiscover: "Market Intel",
     navVault: "Agent Vault",
     btnSearch: "Search",
-    btnRefresh: "Rescan View",
+    btnRefresh: "Refresh Ideas",
+    btnReset: "Reset Profile",
     btnBack: "Previous Level",
     btnLoadMore: "Discover More Nodes",
     summaryTitle: "Macro Analysis",
@@ -38,7 +39,8 @@ const TRANSLATIONS = {
     navDiscover: "情报情报",
     navVault: "资产库",
     btnSearch: "搜索",
-    btnRefresh: "换一批",
+    btnRefresh: "换一批推荐",
+    btnReset: "重置画像",
     btnBack: "返回上一级",
     btnLoadMore: "加载更多发现",
     summaryTitle: "宏观分析",
@@ -137,7 +139,8 @@ const App: React.FC = () => {
 
   // Check for profile on mount
   useEffect(() => {
-    if (!userProfile) {
+    // Skip fallback if we are intentionally onboarding (userProfile is null but showOnboarding is true)
+    if (!userProfile && !showOnboarding) {
       const fallbackProfile = DEFAULT_PROFILE;
       setUserProfile(fallbackProfile);
       localStorage.setItem('auto_wealth_profile', JSON.stringify(fallbackProfile));
@@ -146,12 +149,12 @@ const App: React.FC = () => {
         initializedRef.current = true;
         loadInitialSectors(false, fallbackProfile);
       }
-    } else if (!initializedRef.current) {
+    } else if (userProfile && !initializedRef.current) {
       // Only load initial sectors if profile exists and we haven't initialized yet
       initializedRef.current = true;
       loadInitialSectors(false, userProfile);
     }
-  }, [userProfile]);
+  }, [userProfile, showOnboarding]);
 
   // Auto-scroll to bottom when steps change
   useEffect(() => {
@@ -171,6 +174,24 @@ const App: React.FC = () => {
     localStorage.setItem('auto_wealth_profile', JSON.stringify(profile));
     setShowOnboarding(false);
     loadInitialSectors(false, profile); // Pass profile explicitly to avoid closure staleness
+  };
+
+  const handleOnboardingDismiss = () => {
+    // If we have a profile already (cancelled reset), just hide onboarding
+    // If no profile (initial load cancelled), use default
+    let profile = userProfile;
+    if (!profile) {
+        profile = DEFAULT_PROFILE;
+        setUserProfile(profile);
+        localStorage.setItem('auto_wealth_profile', JSON.stringify(profile));
+    }
+    
+    setShowOnboarding(false);
+    
+    // If we don't have steps loaded yet, load them
+    if (flowSteps.length === 0) {
+        loadInitialSectors(false, profile);
+    }
   };
 
   const t = TRANSLATIONS[language];
@@ -433,6 +454,17 @@ const App: React.FC = () => {
       loadInitialSectors(true);
   };
 
+  const handleReset = async () => {
+      setSearchInput('');
+      setHasError(false);
+      setIsScanning(false);
+      // Clear profile and trigger onboarding for fresh survey
+      localStorage.removeItem('auto_wealth_profile');
+      setUserProfile(null);
+      setShowOnboarding(true);
+      setFlowSteps([]); // Clear visual steps
+  };
+
   const handleBack = () => {
       setSelectedOpportunity(null);
       setIsScanning(false);
@@ -456,7 +488,13 @@ const App: React.FC = () => {
 
   return (
     <div className="h-screen w-full bg-slate-950 text-slate-200 flex flex-col overflow-hidden font-sans">
-      {showOnboarding && <OnboardingFlow language={language} onComplete={handleOnboardingComplete} />}
+      {showOnboarding && (
+        <OnboardingFlow 
+            language={language} 
+            onComplete={handleOnboardingComplete} 
+            onDismiss={handleOnboardingDismiss}
+        />
+      )}
       
       <div className="fixed inset-0 bg-[radial-gradient(circle_at_50%_0%,#0f172a,black)] pointer-events-none z-0"></div>
       
@@ -500,11 +538,14 @@ const App: React.FC = () => {
                   <svg className={`w-4 h-4 ${isScanning ? 'text-sky-500 animate-spin' : 'text-slate-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth="2"/></svg>
                 </div>
               </form>
-              <div className="flex gap-2 shrink-0 w-full md:w-auto">
-                <button onClick={() => loadInitialSectors(true)} disabled={isScanning} className="h-12 flex-1 md:flex-none px-6 flex items-center justify-center bg-white/5 border border-white/10 rounded-2xl text-xs font-bold hover:bg-white/10 transition-all uppercase whitespace-nowrap">
-                  {t.btnRefresh}
-                </button>
-              </div>
+                <div className="flex gap-2 shrink-0 w-full md:w-auto">
+                  <button onClick={() => loadInitialSectors(true)} disabled={isScanning} className="h-12 flex-1 md:flex-none px-6 flex items-center justify-center bg-sky-500 hover:bg-sky-400 text-white shadow-lg shadow-sky-500/20 rounded-2xl text-xs font-bold transition-all uppercase whitespace-nowrap">
+                    {t.btnRefresh}
+                  </button>
+                  <button onClick={handleReset} disabled={isScanning} className="h-12 flex-1 md:flex-none px-6 flex items-center justify-center bg-white/5 border border-white/10 rounded-2xl text-xs font-bold hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30 transition-all uppercase whitespace-nowrap">
+                    {t.btnReset}
+                  </button>
+                </div>
             </div>
             {flowSteps.length > 1 && activeView === 'scout' && (
                 <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
@@ -684,13 +725,14 @@ const App: React.FC = () => {
                 {activeView === 'library' && (
                     sandboxData ? (
                         <SandboxView 
-                            data={sandboxData} 
+                            automation={sandboxData} 
+                            language={language}
                             onClose={() => setSandboxData(null)}
                         />
                     ) : (
                         <AgentLibrary 
                             agents={savedAgents}
-                            onSelect={(agent) => setSandboxData(agent)}
+                            onLaunch={(agent) => setSandboxData(agent)}
                             onDelete={(id) => setSavedAgents(prev => prev.filter(a => a.assetId !== id))}
                         />
                     )

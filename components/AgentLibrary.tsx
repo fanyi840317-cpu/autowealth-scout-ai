@@ -16,6 +16,7 @@ const AgentLibrary: React.FC<AgentLibraryProps> = ({ agents, language, onLaunch,
     launch: language === 'zh' ? '启动沙箱' : 'Launch Sandbox',
     delete: language === 'zh' ? '删除' : 'Delete',
     created: language === 'zh' ? '创建于' : 'Created',
+    business: language === 'zh' ? '商业蓝图' : 'Business Blueprint',
   };
 
   if (agents.length === 0) {
@@ -58,9 +59,29 @@ const AgentLibrary: React.FC<AgentLibraryProps> = ({ agents, language, onLaunch,
               {t.created}: {new Date(agent.createdAt).toLocaleDateString()}
             </p>
 
-            <div className="bg-slate-900/50 rounded-lg p-3 mb-4 border border-slate-800">
-               <p className="text-[10px] text-slate-500 font-bold mb-1 uppercase tracking-tighter">{t.source}</p>
-               <p className="text-xs text-slate-300 line-clamp-1">{agent.sourceOpportunityTitle}</p>
+            <div className="bg-slate-900/50 rounded-lg p-3 mb-4 border border-slate-800 space-y-2">
+               <div>
+                 <p className="text-[10px] text-slate-500 font-bold mb-1 uppercase tracking-tighter">{t.source}</p>
+                 <p className="text-xs text-slate-300 line-clamp-1">{agent.sourceOpportunityTitle}</p>
+               </div>
+               
+               {(agent.monetizationStrategy || agent.targetUser) && (
+                 <div className="pt-2 border-t border-slate-800/50">
+                    <p className="text-[10px] text-sky-500 font-bold mb-1 uppercase tracking-tighter">{t.business}</p>
+                    {agent.monetizationStrategy && (
+                        <div className="flex items-start gap-2 mb-1">
+                            <span className="text-[10px] text-green-500 font-bold shrink-0 mt-0.5">$</span>
+                            <p className="text-xs text-slate-400 line-clamp-1" title={agent.monetizationStrategy}>{agent.monetizationStrategy}</p>
+                        </div>
+                     )}
+                     {agent.targetUser && (
+                        <div className="flex items-start gap-2">
+                            <span className="text-[10px] text-indigo-500 font-bold shrink-0 mt-0.5">@</span>
+                            <p className="text-xs text-slate-400 line-clamp-1" title={agent.targetUser}>{agent.targetUser}</p>
+                        </div>
+                     )}
+                 </div>
+               )}
             </div>
 
             <button 

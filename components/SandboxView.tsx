@@ -8,6 +8,8 @@ interface SandboxViewProps {
 }
 
 const SandboxView: React.FC<SandboxViewProps> = ({ automation, onClose, language }) => {
+  if (!automation) return null;
+
   const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const terminalEndRef = useRef<HTMLDivElement>(null);
@@ -71,6 +73,26 @@ const SandboxView: React.FC<SandboxViewProps> = ({ automation, onClose, language
           </div>
           <div className="flex gap-2">
             <button 
+              onClick={() => {
+                const guide = `
+# SETUP GUIDE
+${automation.setupGuide || 'No setup guide provided.'}
+
+# HUMAN TASKS
+${(automation.humanTasks || []).map(task => `- [ ] ${task}`).join('\n')}
+
+# INSTRUCTIONS
+${automation.instructions}
+                `;
+                navigator.clipboard.writeText(guide);
+                alert(language === 'zh' ? '配置指南已复制' : 'Setup guide copied');
+              }}
+              className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 bg-indigo-900 hover:bg-indigo-800 rounded text-[10px] md:text-xs text-indigo-100 transition-all border border-indigo-700"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              {language === 'zh' ? '查看配置' : 'View Setup'}
+            </button>
+            <button 
               onClick={simulateRun}
               disabled={isRunning}
               className={`flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 rounded text-[10px] md:text-xs font-bold transition-all ${
@@ -98,72 +120,106 @@ const SandboxView: React.FC<SandboxViewProps> = ({ automation, onClose, language
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar - Hidden on mobile */}
-        <div className="w-60 border-r border-slate-800 bg-[#09090b] hidden lg:flex flex-col">
-          <div className="p-3 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Explorer</div>
-          <div className="flex flex-col gap-1 p-2">
-            <div className="flex items-center gap-2 px-2 py-1 bg-sky-500/10 border border-sky-500/20 rounded text-sky-400 text-sm cursor-pointer">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-              agent_script.{automation.language === 'python' ? 'py' : 'js'}
+        {/* Left: Code Editor & Business Context */}
+        <div className="w-1/2 md:w-3/5 border-r border-slate-800 flex flex-col bg-[#1e1e1e]">
+          
+          {/* Business Context Panel (New) */}
+          <div className="bg-[#111] border-b border-slate-800 p-4 text-xs">
+            <h3 className="text-yellow-500 font-bold mb-3 flex items-center gap-2 uppercase tracking-wider">
+              <span className="text-lg">⚡</span> 
+              {language === 'zh' ? '商业变现蓝图' : 'BUSINESS BLUEPRINT'}
+            </h3>
+            
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                    <div className="text-slate-500 font-bold uppercase">{language === 'zh' ? '目标客户' : 'TARGET CUSTOMER'}</div>
+                    <div className="text-slate-300 font-medium">{automation.targetUser || 'N/A'}</div>
+                </div>
+                <div className="space-y-1">
+                    <div className="text-slate-500 font-bold uppercase">{language === 'zh' ? '交付产品' : 'DELIVERABLE'}</div>
+                    <div className="text-slate-300 font-medium">{automation.deliverable || 'N/A'}</div>
+                </div>
+                <div className="col-span-2 space-y-1 bg-green-900/10 p-2 rounded border border-green-900/30">
+                    <div className="text-green-500 font-bold uppercase flex items-center gap-1">
+                        <span>💰</span> {language === 'zh' ? '变现策略' : 'MONETIZATION STRATEGY'}
+                    </div>
+                    <div className="text-green-300 font-medium">{automation.monetizationStrategy || 'N/A'}</div>
+                </div>
+                 <div className="col-span-2 space-y-1">
+                    <div className="text-slate-500 font-bold uppercase">{language === 'zh' ? '价值主张' : 'VALUE PROPOSITION'}</div>
+                    <div className="text-slate-400 italic">"{automation.valueProposition || 'N/A'}"</div>
+                </div>
             </div>
-            <div className="flex items-center gap-2 px-2 py-1 text-slate-500 text-sm hover:text-slate-300 transition-colors cursor-not-allowed">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
-              README.md
-            </div>
+          </div>
+
+          <div className="h-8 bg-[#252526] flex items-center px-4 text-xs text-slate-400 select-none border-b border-[#333] shrink-0">
+             <span className="mr-2">📁 project</span> 
+             <span className="text-slate-600">/</span> 
+             <span className="ml-2 text-yellow-400">script.{automation.language === 'python' ? 'py' : 'js'}</span>
+             
+             {automation.automationScope && (
+               <span className="ml-auto text-[10px] bg-sky-900/30 text-sky-400 px-2 py-0.5 rounded border border-sky-800 truncate max-w-[200px]" title={automation.automationScope}>
+                 SCOPE: {automation.automationScope}
+               </span>
+             )}
+          </div>
+          <div className="flex-1 overflow-auto p-4 font-mono text-sm leading-relaxed text-slate-300 whitespace-pre scrollbar-thin">
+            {automation.code}
           </div>
         </div>
 
-        {/* Main Editor & Terminal Area */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-[#09090b]">
-          {/* Tabs */}
-          <div className="h-9 flex items-center bg-[#18181b] border-b border-slate-800 shrink-0">
-             <div className="px-4 h-full flex items-center gap-2 border-r border-slate-800 bg-[#09090b] text-sky-400 text-xs font-mono">
-                <span className="w-2 h-2 rounded-full bg-sky-500"></span>
-                agent_script.{automation.language === 'python' ? 'py' : 'js'}
-             </div>
+        {/* Right: Terminal & Guide */}
+        <div className="w-1/2 md:w-2/5 flex flex-col bg-[#0c0c0c]">
+          {/* Setup Guide Panel */}
+          <div className="h-1/3 border-b border-slate-800 p-4 overflow-auto bg-[#111] text-xs text-slate-400 font-mono">
+            <h3 className="text-indigo-400 font-bold mb-2 uppercase tracking-wider border-b border-indigo-900/30 pb-1 flex justify-between">
+              <span>{language === 'zh' ? '环境准备 & 人工任务' : 'SETUP & HUMAN TASKS'}</span>
+              <span className="text-[10px] text-slate-500 bg-slate-800 px-1 rounded">PART A: HUMAN</span>
+            </h3>
+            
+            {automation.setupGuide && (
+              <div className="mb-4">
+                <div className="text-slate-500 mb-1 font-bold"># TERMINAL SETUP:</div>
+                <div className="text-green-400 select-all cursor-text bg-black p-2 rounded border border-slate-800">
+                  {automation.setupGuide}
+                </div>
+              </div>
+            )}
+
+            {automation.humanTasks && automation.humanTasks.length > 0 && (
+              <div>
+                <div className="text-slate-500 mb-1 font-bold"># HUMAN INPUT (IDENTITY/AUTH):</div>
+                <div className="bg-amber-900/10 border border-amber-900/30 p-2 rounded">
+                    <ul className="list-none space-y-1 text-slate-300">
+                    {automation.humanTasks.map((task, i) => (
+                        <li key={i} className="flex gap-2 text-[10px] md:text-xs">
+                            <span className="text-amber-500 shrink-0">👤</span>
+                            <span>{task}</span>
+                        </li>
+                    ))}
+                    </ul>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Editor Area */}
-          <div className="flex-1 overflow-auto p-4 md:p-6 font-mono text-xs md:text-sm relative custom-scrollbar">
-            <div className="absolute left-0 top-6 bottom-0 w-8 md:w-12 flex flex-col items-center text-slate-700 pointer-events-none select-none border-r border-slate-900 pr-1 md:pr-2">
-              {Array.from({ length: 50 }).map((_, i) => (
-                <div key={i} className="h-[1.5rem] leading-[1.5rem]">{i + 1}</div>
+          {/* Terminal Output */}
+          <div className="flex-1 flex flex-col min-h-0 relative">
+            <div className="h-8 bg-[#333] flex items-center justify-between px-4 text-xs font-bold text-white select-none shadow-md shrink-0">
+              <div className="flex items-center">
+                <span className="mr-2">💻</span> {t.terminal}
+              </div>
+              <span className="text-[10px] text-green-500 bg-green-900/30 px-1 rounded border border-green-900">PART B: AUTOMATED ENGINE</span>
+            </div>
+            <div className="flex-1 p-3 font-mono text-xs overflow-y-auto text-green-500 bg-black/90 scrollbar-thin">
+              {terminalLogs.map((log, i) => (
+                <div key={i} className="mb-1 break-all animate-[fadeIn_0.1s]">
+                  {log}
+                </div>
               ))}
+              <div ref={terminalEndRef} />
+              {isRunning && <span className="animate-pulse">_</span>}
             </div>
-            <div className="pl-8 md:pl-10">
-               <pre className="text-slate-300 whitespace-pre-wrap">
-                 <code className="block leading-[1.5rem]">{automation.code}</code>
-               </pre>
-            </div>
-          </div>
-
-          {/* Bottom Terminal */}
-          <div className="h-48 md:h-64 border-t border-slate-800 bg-[#09090b] flex flex-col shadow-[0_-10px_20px_rgba(0,0,0,0.5)] shrink-0">
-             <div className="flex items-center justify-between px-4 py-1 bg-[#18181b] border-b border-slate-800">
-                <div className="flex gap-4">
-                  <button className="text-[10px] font-bold text-slate-200 border-b border-sky-500 pb-1 uppercase tracking-wider">{t.terminal}</button>
-                  <button className="text-[10px] font-bold text-slate-500 hover:text-slate-300 transition-colors uppercase tracking-wider">{t.output}</button>
-                </div>
-                <div className="flex gap-2">
-                   <div className="w-2 h-2 rounded-full bg-slate-700"></div>
-                </div>
-             </div>
-             <div className="flex-1 overflow-y-auto p-4 font-mono text-xs bg-black/40 custom-scrollbar">
-                {terminalLogs.length === 0 && !isRunning && (
-                  <div className="text-slate-600">Click "Run Script" to simulate local agent execution.</div>
-                )}
-                {terminalLogs.map((log, i) => (
-                  <div key={i} className={`mb-1 ${
-                    log.includes('[SUCCESS]') ? 'text-emerald-400' : 
-                    log.includes('[ERROR]') ? 'text-red-400' :
-                    log.includes('[WAIT]') ? 'text-sky-400 animate-pulse' :
-                    log.startsWith('$') ? 'text-white font-bold' : 'text-slate-400'
-                  }`}>
-                    {log}
-                  </div>
-                ))}
-                <div ref={terminalEndRef} />
-             </div>
           </div>
         </div>
       </div>

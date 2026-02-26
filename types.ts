@@ -39,6 +39,14 @@ export interface Opportunity {
     scriptFunction: string; // What the script actually does
     stepByStepGuide: string[]; // Detailed technical steps
   };
+  
+  // New: Investment & Requirements
+  prerequisites?: {
+    budget: string; // e.g. "$50/mo for VPS"
+    timeCommitment: string; // e.g. "2h setup, 0h daily"
+    technicalRequirements: string[]; // e.g. ["Python", "OpenAI API Key"]
+    accountsNeeded: string[]; // e.g. ["Twitter Developer Account", "Stripe"]
+  };
 }
 
 export interface DiscoveryNode {
@@ -61,6 +69,15 @@ export interface AutomationResult {
   language: string; // e.g., 'python', 'javascript'
   instructions: string;
   dependencies: string[];
+  setupGuide?: string; // Environment setup and requirements
+  humanTasks?: string[]; // What the human must do manually
+  automationScope?: string; // What this script actually automates
+  
+  // Business Context Fields
+  targetUser?: string; // Who buys this?
+  valueProposition?: string; // Why they buy?
+  monetizationStrategy?: string; // How to charge?
+  deliverable?: string; // What is the output product?
 }
 
 export interface AgentAsset extends AutomationResult {

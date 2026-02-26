@@ -3,6 +3,7 @@ import { UserProfile, Language } from '../types';
 
 interface OnboardingFlowProps {
   onComplete: (profile: UserProfile) => void;
+  onDismiss?: () => void;
   language: Language;
 }
 
@@ -42,7 +43,7 @@ const OPTIONS = {
   ]
 };
 
-const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, language }) => {
+const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onDismiss, language }) => {
   const [step, setStep] = useState(0);
   const [profile, setProfile] = useState<Partial<UserProfile>>({
     skills: [],
@@ -101,6 +102,17 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, language })
             style={{ width: `${((step + 1) / STEPS.length) * 100}%` }}
           />
         </div>
+        
+        {/* Dismiss Button */}
+        {onDismiss && (
+            <button 
+                onClick={onDismiss}
+                className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
+                title={language === 'zh' ? '关闭调查' : 'Close Survey'}
+            >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        )}
 
         <div className="text-center mb-8">
             <h2 className="text-2xl font-bold text-white mb-2">{t.welcome}</h2>

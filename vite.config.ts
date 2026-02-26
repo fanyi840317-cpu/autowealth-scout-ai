@@ -38,19 +38,33 @@ export default defineConfig(({ mode }) => {
                        }
 
                        const groq = new Groq({ apiKey });
-                       const { prompt, schema, systemInstruction } = body;
+                       const { prompt, schema, systemInstruction, messages: providedMessages } = body;
                        
-                       const messages: any[] = [];
+                       let messages: any[] = [];
                        
-                       // Construct system message with schema instruction if present
-                       let systemContent = systemInstruction || "You are a helpful assistant.";
-                       if (schema) {
-                           systemContent += "\n\nYou must respond with a valid JSON object adhering strictly to this schema:\n" + JSON.stringify(schema, null, 2);
+                       if (providedMessages && Array.isArray(providedMessages)) {
+                           messages = providedMessages;
+                           // If schema is present, inject it into system message
+                           if (schema) {
+                               const schemaInstr = "\n\nYou must respond with a valid JSON object adhering strictly to this schema:\n" + JSON.stringify(schema, null, 2);
+                               const sysIndex = messages.findIndex((m: any) => m.role === 'system');
+                               if (sysIndex >= 0) {
+                                   messages[sysIndex].content += schemaInstr;
+                               } else {
+                                   messages.unshift({ role: 'system', content: "You are a helpful assistant." + schemaInstr });
+                               }
+                           }
+                       } else {
+                           // Construct system message with schema instruction if present
+                           let systemContent = systemInstruction || "You are a helpful assistant.";
+                           if (schema) {
+                               systemContent += "\n\nYou must respond with a valid JSON object adhering strictly to this schema:\n" + JSON.stringify(schema, null, 2);
+                           }
+                           messages.push({ role: 'system', content: systemContent });
+                           
+                           // Add user prompt
+                           messages.push({ role: 'user', content: prompt || " " });
                        }
-                       messages.push({ role: 'system', content: systemContent });
-                       
-                       // Add user prompt
-                        messages.push({ role: 'user', content: prompt });
 
                        const timeoutMs = 45000;
                        let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -69,13 +83,17 @@ export default defineConfig(({ mode }) => {
 
                        let text = completion.choices[0]?.message?.content || "";
                        
-                       // Clean Markdown code blocks and extract JSON
-                       const jsonMatch = text.match(/\{[\s\S]*\}/);
-                       if (jsonMatch) {
-                           text = jsonMatch[0];
+                       if (schema) {
+                           // Clean Markdown code blocks and extract JSON only if schema is expected
+                           const jsonMatch = text.match(/\{[\s\S]*\}/);
+                           if (jsonMatch) {
+                               text = jsonMatch[0];
+                           } else {
+                               text = text.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
+                           }
                        } else {
-                           // Fallback cleaning
-                           text = text.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
+                           // For chat/text response, just wrap in JSON object
+                           text = JSON.stringify({ content: text });
                        }
 
                        console.log("Groq Response:", text.substring(0, 200) + "..."); // Log for debugging
